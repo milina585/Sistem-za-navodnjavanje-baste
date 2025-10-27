@@ -47,6 +47,9 @@ float temperatura, vlaznostVazduha;
 int vlaznostZemlje;
 bool pumpaUkljucena;
 
+bool alarmAktivan = false;            
+unsigned long vremePocetkaRada = 0;   
+const unsigned long maxRadnoVreme = 20000; 
 
 void setup() {
   Serial.begin(115200);
@@ -108,6 +111,14 @@ void prikaziNaEkranu() {
   ekran.setTextSize(1);
   ekran.setTextColor(SSD1306_WHITE);
 
+  if (alarmAktivan) {
+    ekran.setTextSize(2);
+    ekran.setCursor(30, 25);
+    ekran.println("ALARM!");
+    ekran.display();
+    return; 
+  }
+
   switch (trenutniRezim) {
     case 0:
       ekran.println("Senzori:");
@@ -128,8 +139,10 @@ void prikaziNaEkranu() {
       ekran.println(" set granica [0-4095]");
       break;
   }
+
   ekran.display();
 }
+
 
 void obradiKomandu(String cmd) {
   cmd.trim();
@@ -140,9 +153,14 @@ void obradiKomandu(String cmd) {
   } else if (cmd == "pump on") {
     pumpaUkljucena = true; 
     Serial.println("Pumpa ukljucena manuelno.");
-  } else if (cmd == "pump off") {
+   } else if (cmd == "pump off") {
     pumpaUkljucena = false; 
     Serial.println("Pumpa iskljucena manuelno.");
+    vremePocetkaRada = 0;     
+    if (alarmAktivan) {       
+      alarmAktivan = false;
+    }
+    prikaziNaEkranu();  
   } else if (cmd.startsWith("set granica ")) {
     int v = cmd.substring(12).toInt();
     if (v >= 0 && v <= 4095) { granicaVlaznosti = v; 
@@ -168,6 +186,24 @@ void loop() {
     vlaznostZemlje = analogRead(SOIL_PIN);
 
     pumpaUkljucena = (vlaznostZemlje < granicaVlaznosti);
+
+  if (pumpaUkljucena && vremePocetkaRada == 0) {
+  vremePocetkaRada = millis();  
+}
+else if (!pumpaUkljucena && vremePocetkaRada != 0) {
+  vremePocetkaRada = 0;         
+  if (alarmAktivan) {           
+    alarmAktivan = false;
+    prikaziNaEkranu(); 
+  }
+}
+
+if (vremePocetkaRada != 0 && (millis() - vremePocetkaRada > maxRadnoVreme)) {
+  if (!alarmAktivan) {
+    alarmAktivan = true;
+    prikaziNaEkranu();
+  }
+}
 
     Serial.printf("Merenje: T=%.1fC, Vz=%.1f%%, Z=%d, Pumpa=%s\n",
                   temperatura, vlaznostVazduha, vlaznostZemlje,
